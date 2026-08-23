@@ -47,6 +47,37 @@ function draw!(o::SliceOverlay, ctx::GeomContext)
     GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
 end
 
+# ── SurfaceSliceOverlay: a region's near boundary, sampling the field, TF-colored ──
+# SliceOverlay on a curved surface. surface_slice.frag injects the region snippet next to the field
+# one, so the program is PER-(FIELD, REGION) and relinked when either's GLSL changes.
+@kwdef mutable struct SurfaceSliceOverlay <: Overlay
+    region::Region
+    enabled::Bool = true
+    gl::CachedProgram = CachedProgram()
+end
+SurfaceSliceOverlay(region::Region; kwargs...) = SurfaceSliceOverlay(; region, kwargs...)
+
+function refresh!(o::SurfaceSliceOverlay, ctx::GeomContext)
+    fg = field_glsl_full(ctx.field); rg = region_glsl(o.region)
+    refresh!(o.gl, (fg, rg)) do
+        link_program_src(read(joinpath(SHADER_DIR, "volume.vert"), String),
+                         read(joinpath(SHADER_DIR, "surface_slice.frag"), String);
+                         includes = Dict("field" => fg, "region" => rg))
+    end
+    o
+end
+
+function draw!(o::SurfaceSliceOverlay, ctx::GeomContext)
+    prog = use!(o.gl)
+    set_camera_uniforms!(prog, ctx.cam, ctx.aspect)
+    uni_m4(prog, "viewProj", ctx.viewproj)
+    uni_i(prog, "interp", ctx.params.interp)
+    bind_region!(o.region, prog)
+    bind_field!(ctx.gpu, prog)
+    bind_tf_uniforms!(prog, ctx.tf)
+    GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
+end
+
 # ── SphereOverlay: analytic ray–sphere impostor over the fullscreen triangle ──
 @kwdef mutable struct SphereOverlay <: Overlay
     center::SVector{3,Float64} = SVector(0.0, 0.0, 0.0)

@@ -111,6 +111,7 @@ using StaticArrays
 
 view = FieldView(A; overlays = [
     SliceOverlay(:z; pos = 0.0),      # a planar slice through the field
+    SurfaceSliceOverlay(SphereRegion(radius = 0.4)),   # the same, on a region's surface
     BoxOutlineOverlay(),              # edges of the region's bounding box
     SphereOutlineOverlay(),           # lat/lon graticule of the region's bounding sphere
     AxesOverlay(),                    # x/y/z axes through the center
@@ -119,6 +120,8 @@ view = FieldView(A; overlays = [
 ```
 
 Each overlay carries its own `enabled` flag, so a host UI can toggle them per frame.
+
+`SurfaceSliceOverlay` is `SliceOverlay` on a curved surface: it colors the near boundary of any `Region`, eg a `SphereRegion` or  `BoxRegion`.
 
 `BoxOutlineOverlay`/`SphereOutlineOverlay` outline the view's region by default; pass `region` to outline
 another one — e.g. `SphereOutlineOverlay(region = SphereRegion(radius = 8.0))` for a reference sphere.

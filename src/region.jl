@@ -1,9 +1,10 @@
 # Region interface + concrete BoxRegion / SphereRegion.
 #
-# A Region is a ray-interval provider for the volume marcher: it supplies a GLSL
-# `vec2 intersectRegion(vec3 ro, vec3 rd)` (returning the (tnear, tfar) ray parameters of the entry
-# and exit of the region), the uniforms that snippet needs, and a bounding sphere used by the camera
-# for near/far framing.
+# A Region is a ray-interval provider for the volume marcher and the surface overlays: it supplies a
+# GLSL `vec2 intersectRegion(vec3 ro, vec3 rd)` (returning the (tnear, tfar) ray parameters of the
+# entry and exit of the region), the uniforms that snippet needs, and a bounding sphere used by the
+# camera for near/far framing. Both parameters are UNCLAMPED — negative means behind the eye; a
+# consumer that must start at the eye clamps for itself.
 
 abstract type Region end
 
@@ -32,7 +33,7 @@ vec2 intersectRegion(vec3 ro, vec3 rd) {
     vec3 tmn = min(t0, t1), tmx = max(t0, t1);
     float tnear = max(max(tmn.x, tmn.y), tmn.z);
     float tfar  = min(min(tmx.x, tmx.y), tmx.z);
-    return vec2(max(tnear, 0.0), tfar);
+    return vec2(tnear, tfar);
 }
 """
 
@@ -72,7 +73,7 @@ vec2 intersectRegion(vec3 ro, vec3 rd) {
     float s = sqrt(disc);
     float tnear = -b - s;
     float tfar  = -b + s;
-    return vec2(max(tnear, 0.0), tfar);
+    return vec2(tnear, tfar);
 }
 """
 

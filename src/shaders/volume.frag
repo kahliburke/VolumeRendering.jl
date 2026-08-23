@@ -42,7 +42,7 @@ void main() {
 
     // Intersect the region (near/far ray parameters) via the injected `region` snippet.
     vec2 tr = intersectRegion(ro, rd);
-    float tn   = tr.x;
+    float tn   = max(tr.x, 0.0);   // the region may start behind the eye — march from the eye
     float tfar = tr.y;
 
     // Clip the far end at the nearest opaque geometry. Min-reduce the geometry depth over this low-res

@@ -24,6 +24,15 @@ function renderbuf(view, w)
     GL.glReadPixels(0, 0, w, w, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, buf); GL.glFinish()
     (tex, buf)
 end
+# Geometry depth only (the composite pass leaves it untouched), so overlay coverage can be checked
+# without the volume's contribution mixed in. 1 == nothing drawn.
+function depthbuf(view, w)
+    render!(view, w, w)
+    GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, view.vr.geom_fb.fbo)
+    buf = Array{Float32}(undef, w, w)
+    GL.glReadPixels(0, 0, w, w, GL.GL_DEPTH_COMPONENT, GL.GL_FLOAT, buf); GL.glFinish()
+    buf
+end
 litfrac(b) = count(>(4), @view b[1:3, :, :]) / (3 * size(b, 2) * size(b, 3))
 
 const W = 256
@@ -102,10 +111,38 @@ VolumeRendering.axis_index_glsl(k::UniformAxis, c) = "((" * c * ") - " * repr(k.
             vf = VectorField(p -> SVector(-p[2], p[1], 0.2); region = BoxRegion((-1.,-1.,-1.), (1.,1.,1.)))
             ovs = Overlay[SliceOverlay(:z), BoxOutlineOverlay(), SphereOverlay(radius = 0.4),
                           SphereOutlineOverlay(region = SphereRegion(radius = 0.6)),
+                          SurfaceSliceOverlay(SphereRegion(radius = 0.4)),
                           AxesOverlay(), StreamlinesOverlay(vf), GlyphsOverlay(vf; every = 8)]
             _, b = renderbuf(FieldView(A; overlays = ovs), W)
             @test GL.glGetError() == 0
             @test litfrac(b) > 0.05
+        end
+
+        @testset "surface slice" begin
+            A = KeyedArray(gaussian(xs, ys, zs); x = xs, y = ys, z = zs)
+            topdown!(v) = (v.camera.projection = :ortho;
+                           v.camera.eye = SVector(0.0, 0.0, 3.0); v.camera.lookat = SVector(0.0, 0.0, 0.0);
+                           v.camera.up = SVector(0.0, 1.0, 0.0); v.camera.ortho_half = 1.2; v)
+
+            # Face-on from +z, the box's near boundary IS the plane z = 1, so the two slice overlays
+            # must agree pixel for pixel.
+            _, bplane = renderbuf(topdown!(FieldView(A; overlays = [SliceOverlay(:z; pos = 1.0)])), W)
+            _, bsurf = renderbuf(topdown!(FieldView(A;
+                overlays = [SurfaceSliceOverlay(BoxRegion((-1., -1., -1.), (1., 1., 1.)))])), W)
+            @test bsurf == bplane
+
+            # Silhouette seen from outside: the same pixels as sphere.frag's independent root solve.
+            c = SVector(0.1, 0.0, 0.0)
+            dsurf = depthbuf(FieldView(A; overlays = [SurfaceSliceOverlay(SphereRegion(; center = c, radius = 0.5))]), W)
+            dimp = depthbuf(FieldView(A; overlays = [SphereOverlay(; center = c, radius = 0.5)]), W)
+            @test (dsurf .< 1) == (dimp .< 1)
+            @test any(<(1), dsurf) && !all(<(1), dsurf)      # a silhouette, so the above isn't vacuous
+
+            # Eye inside → the far surface, wrapping the whole view. Only works while intersectRegion
+            # keeps tnear's sign.
+            v = FieldView(A; overlays = [SurfaceSliceOverlay(SphereRegion(radius = 0.5))])
+            v.camera.eye = SVector(0.1, 0.0, 0.0); v.camera.lookat = SVector(0.0, 0.0, 0.0)
+            @test all(<(1), depthbuf(v, W))
         end
 
         @testset "sphere outline graticule" begin
