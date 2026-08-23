@@ -51,6 +51,36 @@ end
 link_program(vert_file::AbstractString, frag_file::AbstractString) =
     link_program_src(read(joinpath(SHADER_DIR, vert_file), String), read(joinpath(SHADER_DIR, frag_file), String))
 
+# A fresh (attribute-less) VAO — core profile still requires one bound to draw generated geometry.
+_new_vao() = (r = Ref{GL.GLuint}(0); GL.glGenVertexArrays(1, r); r[])
+
+# The GL state of a shader-driven overlay: its program + VAO, built on first use so the overlay can
+# be constructed with no current context. `key` is whatever the source depends on (the field GLSL for
+# per-field programs, `nothing` for static ones) — the program relinks only when it changes.
+mutable struct CachedProgram
+    prog::GL.GLuint
+    vao::GL.GLuint
+    key::Any
+end
+CachedProgram() = CachedProgram(0, 0, nothing)
+
+function refresh!(build, gl::CachedProgram, key)
+    gl.vao == 0 && (gl.vao = _new_vao())
+    if gl.prog == 0 || key != gl.key
+        gl.prog != 0 && GL.glDeleteProgram(gl.prog)
+        gl.prog = build()
+        gl.key = key
+    end
+    gl
+end
+
+# A static program: linked once from these shader files, never relinked.
+refresh!(gl::CachedProgram, vert::AbstractString, frag::AbstractString) =
+    refresh!(() -> link_program(vert, frag), gl, (vert, frag))
+
+# Bind for drawing; returns the program so the caller can set its uniforms.
+use!(gl::CachedProgram) = (GL.glUseProgram(gl.prog); GL.glBindVertexArray(gl.vao); gl.prog)
+
 # `GL_LINEAR` default → one hardware-filtered `texture()` fetch. Wrap is per-axis: `wrap[1]→S,
 # wrap[2]→T, wrap[3]→R`, default CLAMP_TO_EDGE (correct for a generic Cartesian grid). (w,h,d)→S,T,R.
 function tex3d_r32f(data::AbstractArray{<:Real,3};

@@ -107,6 +107,15 @@ VolumeRendering.axis_index_glsl(k::UniformAxis, c) = "((" * c * ") - " * repr(k.
             @test litfrac(b) > 0.05
         end
 
+        @testset "overlay fingerprint tracks state, not GL resources" begin
+            o = BoxOutlineOverlay(color = (1.0, 0.0, 0.0))
+            fp = VolumeRendering.overlay_fingerprint(o)
+            o.gl.key = (1, 2, 3)                                  # GL cache: not part of the image
+            @test VolumeRendering.overlay_fingerprint(o) == fp
+            o.color = (0.0, 1.0, 0.0)
+            @test VolumeRendering.overlay_fingerprint(o) != fp
+        end
+
         @testset "field switch re-uploads (same-shape, different data)" begin
             # A1/A2 have identical shape+axes → identical field_glsl → the volume program is NOT
             # rebuilt on switch; the texture MUST still be re-uploaded so the image reflects A2.

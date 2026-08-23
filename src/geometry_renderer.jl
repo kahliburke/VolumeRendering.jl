@@ -44,3 +44,22 @@ function draw!(gr::GeometryRenderer, vp)
     GL.glDrawArrays(GL.GL_LINES, 0, gr.nverts)
     gr
 end
+
+# The GL state of a line-geometry overlay: a GeometryRenderer built on first use, its vertices
+# regenerated only when `key` — everything they are computed from — changes.
+mutable struct CachedLines
+    gr::Union{Nothing,GeometryRenderer}
+    key::Any
+end
+CachedLines() = CachedLines(nothing, nothing)
+
+function refresh!(makeverts, gl::CachedLines, key)
+    gl.gr === nothing && (gl.gr = GeometryRenderer())
+    if key != gl.key
+        upload!(gl.gr, makeverts())
+        gl.key = key
+    end
+    gl
+end
+
+draw!(gl::CachedLines, vp) = (gl.gr === nothing || draw!(gl.gr, vp); gl)

@@ -6,12 +6,17 @@
 # FieldViews (and any host) can share one GL context without corrupting each other.
 
 using StaticArrays
+using ConstructionBase: getfields
 
 # ── Overlay protocol (concrete overlays + GeomContext usage live in overlays.jl) ──
+# Every overlay keeps its lazily-built GL resources in a single field named `gl` (a CachedProgram or
+# CachedLines) and its image-affecting state in the remaining fields — which is what lets `enabled`
+# and `overlay_fingerprint` below be shared instead of rewritten per overlay.
 abstract type Overlay end
-enabled(::Overlay) = true               # instances may override with their own flag
+enabled(o::Overlay) = o.enabled
 refresh!(::Overlay, ctx) = nothing      # default: stateless overlays need no per-frame update
-overlay_fingerprint(o::Overlay) = objectid(o)   # overlays with mutable state override this
+# Every input that affects the image, derived from the fields, so a new one can't be forgotten here.
+overlay_fingerprint(o::Overlay) = (typeof(o), Base.structdiff(getfields(o), NamedTuple{(:gl,)}))
 # draw!(o::Overlay, ctx) has no default — every concrete overlay defines it.
 
 # Shared per-frame inputs handed to each overlay's refresh!/draw! (no field-specific/GRMHD types).
