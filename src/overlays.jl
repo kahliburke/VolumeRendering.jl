@@ -6,6 +6,7 @@
 # Every overlay follows the same shape: image-affecting state in plain fields, GL resources in a single
 # `gl` field (CachedProgram / CachedLines) that builds itself on first `refresh!` — so an overlay can be
 # constructed with no current GL context, and `enabled`/`overlay_fingerprint` come from the protocol.
+# Fields carry their own types, so `@kwdef` constructors convert whatever the caller passes.
 
 using StaticArrays
 
@@ -15,14 +16,13 @@ _axis_int(a::Symbol) = a === :x ? 0 : a === :y ? 1 : a === :z ? 2 :
 # ── SliceOverlay: world-space quad on {axis = pos}, sampling the field, TF-colored ──
 # slice.frag injects the field snippet, so the program is PER-FIELD and relinked when the field's
 # GLSL changes.
-mutable struct SliceOverlay <: Overlay
+@kwdef mutable struct SliceOverlay <: Overlay
     axis::Int                       # 0 = x, 1 = y, 2 = z
-    pos::Float64
-    enabled::Bool
-    gl::CachedProgram
+    pos::Float64 = 0.0
+    enabled::Bool = true
+    gl::CachedProgram = CachedProgram()
 end
-SliceOverlay(axis::Symbol; pos = 0.0, enabled = true) =
-    SliceOverlay(_axis_int(axis), Float64(pos), enabled, CachedProgram())
+SliceOverlay(axis::Symbol; kwargs...) = SliceOverlay(; axis = _axis_int(axis), kwargs...)
 
 function refresh!(o::SliceOverlay, ctx::GeomContext)
     fg = field_glsl_full(ctx.field)
@@ -48,16 +48,13 @@ function draw!(o::SliceOverlay, ctx::GeomContext)
 end
 
 # ── SphereOverlay: analytic ray–sphere impostor over the fullscreen triangle ──
-mutable struct SphereOverlay <: Overlay
-    center::NTuple{3,Float64}
+@kwdef mutable struct SphereOverlay <: Overlay
+    center::SVector{3,Float64} = SVector(0.0, 0.0, 0.0)
     radius::Float64
-    color::NTuple{3,Float64}
-    enabled::Bool
-    gl::CachedProgram
+    color::RGB{Float64} = RGB(0.06, 0.06, 0.09)
+    enabled::Bool = true
+    gl::CachedProgram = CachedProgram()
 end
-SphereOverlay(; center = (0.0, 0.0, 0.0), radius, color = (0.06, 0.06, 0.09), enabled = true) =
-    SphereOverlay(NTuple{3,Float64}(center), Float64(radius), NTuple{3,Float64}(color),
-                  enabled, CachedProgram())
 
 refresh!(o::SphereOverlay, ::GeomContext) = (refresh!(o.gl, "volume.vert", "sphere.frag"); o)
 
@@ -67,22 +64,20 @@ function draw!(o::SphereOverlay, ctx::GeomContext)
     uni_m4(prog, "viewProj", ctx.viewproj)
     uni_3f(prog, "sphereCenter", o.center...)
     uni_f(prog, "sphereRadius", o.radius)
-    uni_3f(prog, "sphereColor", o.color...)
+    uni_3f(prog, "sphereColor", o.color)
     GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
 end
 
 # ── LineOverlay: screen-space constant-pixel-width line between two world endpoints ──
-mutable struct LineOverlay <: Overlay
+@kwdef mutable struct LineOverlay <: Overlay
     a::SVector{3,Float64}
     b::SVector{3,Float64}
-    width_px::Float64
-    color::NTuple{3,Float64}
-    enabled::Bool
-    gl::CachedProgram
+    width_px::Float64 = 2.0
+    color::RGB{Float64} = RGB(0.8, 0.8, 0.85)
+    enabled::Bool = true
+    gl::CachedProgram = CachedProgram()
 end
-LineOverlay(a, b; width_px = 2.0, color = (0.8, 0.8, 0.85), enabled = true) =
-    LineOverlay(SVector{3,Float64}(a), SVector{3,Float64}(b), Float64(width_px),
-                NTuple{3,Float64}(color), enabled, CachedProgram())
+LineOverlay(a, b; kwargs...) = LineOverlay(; a, b, kwargs...)
 
 refresh!(o::LineOverlay, ::GeomContext) = (refresh!(o.gl, "line.vert", "line.frag"); o)
 
@@ -92,21 +87,17 @@ function draw!(o::LineOverlay, ctx::GeomContext)
     uni_3f(prog, "axisA", o.a...); uni_3f(prog, "axisB", o.b...)
     uni_2f(prog, "viewportPx", ctx.vieww, ctx.viewh)
     uni_f(prog, "lineWidthPx", o.width_px)
-    uni_3f(prog, "lineColor", o.color...)
+    uni_3f(prog, "lineColor", o.color)
     GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
 end
 
 # ── AxesOverlay: three colored screen-space lines through the region center spanning the region ──
-mutable struct AxesOverlay <: Overlay
-    width_px::Float64
-    colors::NTuple{3,NTuple{3,Float64}}
-    enabled::Bool
-    gl::CachedProgram
+@kwdef mutable struct AxesOverlay <: Overlay
+    width_px::Float64 = 2.0
+    colors::NTuple{3,RGB{Float64}} = (RGB(1.0, 0.3, 0.3), RGB(0.3, 1.0, 0.3), RGB(0.4, 0.6, 1.0))
+    enabled::Bool = true
+    gl::CachedProgram = CachedProgram()
 end
-AxesOverlay(; enabled = true, width_px = 2.0,
-            colors = ((1.0, 0.3, 0.3), (0.3, 1.0, 0.3), (0.4, 0.6, 1.0))) =
-    AxesOverlay(Float64(width_px), NTuple{3,NTuple{3,Float64}}(map(c -> NTuple{3,Float64}(c), colors)),
-                enabled, CachedProgram())
 
 refresh!(o::AxesOverlay, ::GeomContext) = (refresh!(o.gl, "line.vert", "line.frag"); o)
 
@@ -118,29 +109,26 @@ function draw!(o::AxesOverlay, ctx::GeomContext)
     uni_m4(prog, "viewProj", ctx.viewproj)
     uni_2f(prog, "viewportPx", ctx.vieww, ctx.viewh)
     uni_f(prog, "lineWidthPx", o.width_px)
-    for i in 1:3
-        ê = _AXIS_UNITS[i]
+    for (ê, color) in zip(_AXIS_UNITS, o.colors)
         a = center - radius * ê
         b = center + radius * ê
         uni_3f(prog, "axisA", a...); uni_3f(prog, "axisB", b...)
-        uni_3f(prog, "lineColor", o.colors[i]...)
+        uni_3f(prog, "lineColor", color)
         GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
     end
 end
 
 # ── BoxOutlineOverlay: the 12 edges of a region's AABB as GL_LINES (via a GeometryRenderer) ──
-mutable struct BoxOutlineOverlay <: Overlay
-    region::Union{Nothing,Region}   # explicit region, else ctx.region at draw time
-    color::NTuple{3,Float64}
-    enabled::Bool
-    gl::CachedLines
+@kwdef mutable struct BoxOutlineOverlay <: Overlay
+    region::Union{Nothing,Region} = nothing   # explicit region, else ctx.region at draw time
+    color::RGB{Float64} = RGB(0.5, 0.5, 0.55)
+    enabled::Bool = true
+    gl::CachedLines = CachedLines()
 end
-BoxOutlineOverlay(; region = nothing, color = (0.5, 0.5, 0.55), enabled = true) =
-    BoxOutlineOverlay(region, NTuple{3,Float64}(color), enabled, CachedLines())
 
 # Interleaved (x,y,z, r,g,b) vertices for the 12 edges of [lo,hi] (drawn as GL_LINES).
 function _boxoutline_verts(lo, hi, color)
-    r, g, b = Float32.(color)
+    c = RGB{Float32}(color)
     xs = (lo[1], hi[1]); ys = (lo[2], hi[2]); zs = (lo[3], hi[3])
     corner(ix, iy, iz) = (Float32(xs[ix]), Float32(ys[iy]), Float32(zs[iz]))
     edges = (
@@ -153,7 +141,7 @@ function _boxoutline_verts(lo, hi, color)
     )
     out = Float32[]
     for (ca, cb) in edges
-        append!(out, (corner(ca...)..., r, g, b, corner(cb...)..., r, g, b))
+        append!(out, (corner(ca...)..., c.r, c.g, c.b, corner(cb...)..., c.r, c.g, c.b))
     end
     out
 end
@@ -169,19 +157,16 @@ end
 draw!(o::BoxOutlineOverlay, ctx::GeomContext) = (draw!(o.gl, ctx.viewproj); o)
 
 # ── StreamlinesOverlay: evenly-spaced field lines of a VectorField, colored by |V| ──
-mutable struct StreamlinesOverlay <: Overlay
+@kwdef mutable struct StreamlinesOverlay <: Overlay
     vf::VectorField
-    colormap::Symbol
-    min_density::Int
-    max_density::Int
-    mag_window::Union{Nothing,Tuple}
-    enabled::Bool
-    gl::CachedLines
+    colormap::Symbol = :viridis
+    min_density::Int = 1
+    max_density::Int = 2
+    mag_window::Union{Nothing,Tuple} = nothing
+    enabled::Bool = true
+    gl::CachedLines = CachedLines()
 end
-StreamlinesOverlay(vf::VectorField; colormap = :viridis, min_density = 1, max_density = 2,
-                   mag_window = nothing, enabled = true) =
-    StreamlinesOverlay(vf, colormap, Int(min_density), Int(max_density), mag_window, enabled,
-                       CachedLines())
+StreamlinesOverlay(vf::VectorField; kwargs...) = StreamlinesOverlay(; vf, kwargs...)
 
 function refresh!(o::StreamlinesOverlay, ::GeomContext)
     refresh!(o.gl, (o.vf, o.colormap, o.min_density, o.max_density, o.mag_window)) do
@@ -195,20 +180,17 @@ end
 draw!(o::StreamlinesOverlay, ctx::GeomContext) = (draw!(o.gl, ctx.viewproj); o)
 
 # ── GlyphsOverlay: arrow glyphs subsampled from the streamlines of a VectorField ──
-mutable struct GlyphsOverlay <: Overlay
+@kwdef mutable struct GlyphsOverlay <: Overlay
     vf::VectorField
-    colormap::Symbol
-    min_density::Int
-    max_density::Int
-    every::Int
-    mag_window::Union{Nothing,Tuple}
-    enabled::Bool
-    gl::CachedLines
+    colormap::Symbol = :viridis
+    min_density::Int = 1
+    max_density::Int = 2
+    every::Int = 12
+    mag_window::Union{Nothing,Tuple} = nothing
+    enabled::Bool = true
+    gl::CachedLines = CachedLines()
 end
-GlyphsOverlay(vf::VectorField; colormap = :viridis, min_density = 1, max_density = 2, every = 12,
-              mag_window = nothing, enabled = true) =
-    GlyphsOverlay(vf, colormap, Int(min_density), Int(max_density), Int(every), mag_window, enabled,
-                  CachedLines())
+GlyphsOverlay(vf::VectorField; kwargs...) = GlyphsOverlay(; vf, kwargs...)
 
 function refresh!(o::GlyphsOverlay, ::GeomContext)
     refresh!(o.gl, (o.vf, o.colormap, o.min_density, o.max_density, o.every, o.mag_window)) do

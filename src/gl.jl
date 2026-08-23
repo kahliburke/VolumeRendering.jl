@@ -200,6 +200,7 @@ uni_f(p, name, v)     = GL.glUniform1f(GL.glGetUniformLocation(p, name), Float32
 uni_2f(p, name, x, y) = GL.glUniform2f(GL.glGetUniformLocation(p, name), Float32(x), Float32(y))
 uni_2i(p, name, x, y) = GL.glUniform2i(GL.glGetUniformLocation(p, name), Int32(x), Int32(y))
 uni_3f(p, name, x, y, z) = GL.glUniform3f(GL.glGetUniformLocation(p, name), Float32(x), Float32(y), Float32(z))
+uni_3f(p, name, c::Colorant) = (rgb = RGB{Float32}(c); uni_3f(p, name, rgb.r, rgb.g, rgb.b))
 # 4×4 matrix uniform. `m` is column-major (Julia/StaticArrays native), matching GL's expectation.
 # A `Vector{Float32}` is uploaded as-is (already collected once per frame — no re-copy per overlay).
 uni_m4(p, name, m) = GL.glUniformMatrix4fv(GL.glGetUniformLocation(p, name), 1, GL.GL_FALSE,

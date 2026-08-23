@@ -108,11 +108,11 @@ VolumeRendering.axis_index_glsl(k::UniformAxis, c) = "((" * c * ") - " * repr(k.
         end
 
         @testset "overlay fingerprint tracks state, not GL resources" begin
-            o = BoxOutlineOverlay(color = (1.0, 0.0, 0.0))
+            o = BoxOutlineOverlay(color = RGB(1.0, 0.0, 0.0))
             fp = VolumeRendering.overlay_fingerprint(o)
             o.gl.key = (1, 2, 3)                                  # GL cache: not part of the image
             @test VolumeRendering.overlay_fingerprint(o) == fp
-            o.color = (0.0, 1.0, 0.0)
+            o.color = RGB(0.0, 1.0, 0.0)
             @test VolumeRendering.overlay_fingerprint(o) != fp
         end
 
