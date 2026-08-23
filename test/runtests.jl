@@ -4,7 +4,7 @@
 
 using Test
 using VolumeRendering, AxisKeys, StaticArrays
-using ColorTypes, FixedPointNumbers
+using ColorTypes, FixedPointNumbers, Unitful
 import GLFW, ModernGL as GL
 
 # ── headless GL context + pixel readback helpers ──
@@ -101,10 +101,35 @@ VolumeRendering.axis_index_glsl(k::UniformAxis, c) = "((" * c * ") - " * repr(k.
             A = KeyedArray(gaussian(xs, ys, zs); x = xs, y = ys, z = zs)
             vf = VectorField(p -> SVector(-p[2], p[1], 0.2); region = BoxRegion((-1.,-1.,-1.), (1.,1.,1.)))
             ovs = Overlay[SliceOverlay(:z), BoxOutlineOverlay(), SphereOverlay(radius = 0.4),
+                          SphereOutlineOverlay(region = SphereRegion(radius = 0.6)),
                           AxesOverlay(), StreamlinesOverlay(vf), GlyphsOverlay(vf; every = 8)]
             _, b = renderbuf(FieldView(A; overlays = ovs), W)
             @test GL.glGetError() == 0
             @test litfrac(b) > 0.05
+        end
+
+        @testset "sphere outline graticule" begin
+            @test VolumeRendering._parallel_lats(3) ≈ [-π/4, 0, π/4]
+            @test isempty(VolumeRendering._parallel_lats(0))
+            @test VolumeRendering._meridian_lons(6) ≈ [0, π/3, 2π/3, π, 4π/3, 5π/3]
+            @test isempty(VolumeRendering._meridian_lons(0))
+            @test VolumeRendering._parallel_lats([0.1, 0.2]) == [0.1, 0.2]     # explicit angles pass through
+
+            # equator only, radius 2 around (1,0,0): 8 segments ⇒ 8 vertex pairs on the circle z = 0
+            v = reshape(VolumeRendering._sphereoutline_verts(
+                SVector(1.0, 0.0, 0.0), 2.0, [0.0], 0, 8, RGB(1.0, 0.0, 0.0)), 6, :)
+            @test size(v) == (6, 16)
+            @test v[3, :] == zeros(16)
+            @test hypot.(v[1, :] .- 1, v[2, :]) ≈ fill(2.0, 16)
+            @test v[4:6, :] == repeat([1.0, 0.0, 0.0], 1, 16)
+
+            # a meridian is half a circle, so it gets half the segments (9 points ⇒ 8 pairs)
+            m = VolumeRendering._sphereoutline_verts(SVector(0.0, 0.0, 0.0), 1.0, 0, [0.0], 16, RGB(1.0, 0.0, 0.0))
+            @test length(m) == 6 * 2 * 8
+
+            # angles only ever reach sin/cos, so Unitful angles work with no conversion
+            @test VolumeRendering._sphereoutline_verts(SVector(0.0, 0.0, 0.0), 1.0, [30u"°"], 0, 8, RGB(1.0, 0.0, 0.0)) ≈
+                  VolumeRendering._sphereoutline_verts(SVector(0.0, 0.0, 0.0), 1.0, [π/6],    0, 8, RGB(1.0, 0.0, 0.0))
         end
 
         @testset "overlay fingerprint tracks state, not GL resources" begin

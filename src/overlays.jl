@@ -156,6 +156,67 @@ end
 
 draw!(o::BoxOutlineOverlay, ctx::GeomContext) = (draw!(o.gl, ctx.viewproj); o)
 
+# ── SphereOutlineOverlay: lat/lon graticule of a region's bounding sphere, as GL_LINES ──
+# The mirror of BoxOutlineOverlay: that one outlines `aabb(region)`, this one `bounds(region)`. An
+# arbitrary reference sphere is a `SphereRegion`, whose bounds are itself.
+@kwdef mutable struct SphereOutlineOverlay <: Overlay
+    region::Union{Nothing,Region} = nothing         # explicit region, else ctx.region at draw time
+    parallels::Union{Integer,AbstractVector} = 3    # latitudes, or how many of them
+    meridians::Union{Integer,AbstractVector} = 6    # azimuths, or how many of them
+    segments::Int = 64                              # segments per full circle
+    color::RGB{Float64} = RGB(0.5, 0.5, 0.55)
+    enabled::Bool = true
+    gl::CachedLines = CachedLines()
+end
+
+# Latitudes of the parallels: given explicitly, or a count ⇒ evenly spaced with the poles left out
+# (so an odd count includes the equator).
+_parallel_lats(n::Integer) = range(-π/2, π/2, n + 2)[2:end-1]
+_parallel_lats(lats) = lats
+
+# Azimuths of the meridians: given explicitly, or a count ⇒ evenly spaced over the full turn. A
+# meridian is a half great circle pole to pole, so a count of 6 draws as 3 great circles.
+_meridian_lons(n::Integer) = range(; start = 0.0, step = 2π / n, length = n)
+_meridian_lons(lons) = lons
+
+_sphere_point(center, radius, lat, lon) =
+    center + radius * SVector(cos(lat) * cos(lon), cos(lat) * sin(lon), sin(lat))
+
+# Consecutive point pairs of a polyline, as GL_LINES vertices.
+function _push_polyline!(out, points, c::RGB{Float32})
+    for (a, b) in zip(points, @view points[2:end])
+        append!(out, (a..., c.r, c.g, c.b, b..., c.r, c.g, c.b))
+    end
+    out
+end
+
+# Interleaved (x,y,z, r,g,b) vertices for the graticule of the sphere (center, radius): rings at
+# fixed latitude plus half great circles pole to pole. Angles are radians — Unitful angles work too,
+# since they only ever reach `sin`/`cos`. `segments` counts a FULL circle, so a meridian gets half.
+function _sphereoutline_verts(center, radius, parallels, meridians, segments, color)
+    c = RGB{Float32}(color)
+    out = Float32[]
+    for lat in _parallel_lats(parallels)
+        _push_polyline!(out, [_sphere_point(center, radius, lat, lon)
+                              for lon in range(0, 2π, segments + 1)], c)
+    end
+    for lon in _meridian_lons(meridians)
+        _push_polyline!(out, [_sphere_point(center, radius, lat, lon)
+                              for lat in range(-π/2, π/2, segments ÷ 2 + 1)], c)
+    end
+    out
+end
+
+function refresh!(o::SphereOutlineOverlay, ctx::GeomContext)
+    center, radius = bounds(something(o.region, ctx.region))
+    refresh!(o.gl, (center, radius, o.parallels, o.meridians, o.segments, o.color)) do
+        _sphereoutline_verts(center, radius, o.parallels, o.meridians, o.segments, o.color)
+    end
+    o
+end
+
+draw!(o::SphereOutlineOverlay, ctx::GeomContext) = (draw!(o.gl, ctx.viewproj); o)
+
 # ── StreamlinesOverlay: evenly-spaced field lines of a VectorField, colored by |V| ──
 @kwdef mutable struct StreamlinesOverlay <: Overlay
     vf::VectorField

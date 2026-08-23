@@ -111,13 +111,23 @@ using StaticArrays
 
 view = FieldView(A; overlays = [
     SliceOverlay(:z; pos = 0.0),      # a planar slice through the field
-    BoxOutlineOverlay(),              # edges of the region
+    BoxOutlineOverlay(),              # edges of the region's bounding box
+    SphereOutlineOverlay(),           # lat/lon graticule of the region's bounding sphere
     AxesOverlay(),                    # x/y/z axes through the center
     SphereOverlay(radius = 0.4),      # sphere geometry
 ])
 ```
 
 Each overlay carries its own `enabled` flag, so a host UI can toggle them per frame.
+
+`BoxOutlineOverlay`/`SphereOutlineOverlay` outline the view's region by default; pass `region` to outline
+another one — e.g. `SphereOutlineOverlay(region = SphereRegion(radius = 8.0))` for a reference sphere.
+Their `parallels`/`meridians` take either a count or explicit angles, in radians or as Unitful angles:
+
+```julia
+SphereOutlineOverlay(parallels = 5, meridians = 12)          # evenly spaced
+SphereOutlineOverlay(parallels = [-30u"°", 0u"°", 30u"°"])   # exactly these latitudes
+```
 
 ## Render parameters
 
