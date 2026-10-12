@@ -42,6 +42,7 @@ end
     refine_samples::Int = 16    # jittered frames averaged while idle for progressive refinement; 1 disables it
     flymode::Bool = false
     fly_speed::Float64 = 0.25
+    background::NTuple{3,Float32} = (0f0, 0f0, 0f0)   # RGB behind the volume and the overlays
 end
 
 # ── shared per-program uniform groups ──
@@ -135,7 +136,7 @@ render_key(view::FieldView, gw, gh, vw, vh) = hash((
     view.camera.eye, view.camera.lookat, view.camera.up, view.camera.projection,
     view.camera.fov, view.camera.ortho_half,
     view.params.mode, view.params.interp, view.params.step_scale, view.params.opacity_scale,
-    view.params.refine_samples,
+    view.params.refine_samples, view.params.background,
     fingerprint(view.field), fingerprint(view.region),
     view.tf.colormap, view.tf.logscale, view.tf.lo, view.tf.hi, view.tf.opacity_pts,
     Tuple(overlay_fingerprint(o) for o in view.overlays),
@@ -185,7 +186,7 @@ function render_frame!(view::FieldView, gw, gh, vw, vh)
     GL.glDisable(GL.GL_SCISSOR_TEST); GL.glDisable(GL.GL_CULL_FACE)
     GL.glEnable(GL.GL_DEPTH_TEST); GL.glDepthFunc(GL.GL_LESS); GL.glDepthMask(GL.GL_TRUE)
     GL.glDisable(GL.GL_BLEND)
-    GL.glClearColor(0, 0, 0, 1); GL.glClearDepth(1.0)
+    GL.glClearColor(view.params.background..., 1); GL.glClearDepth(1.0)
     GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
     geometry_pass!(view, ctx)
 
