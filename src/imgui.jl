@@ -1,5 +1,5 @@
 # CImGui interop for a FieldView: `ShowVolume` draws it as an interactive image and turns
-# mouse/keyboard into camera moves; right-click (no drag) toggles a floating `ShowControls` window.
+# mouse/keyboard into camera moves (drag orbits, Shift-drag or right-drag pans, wheel zooms); right-click (no drag) toggles a floating `ShowControls` window.
 
 using CImGui
 using CImGui: ImVec2
@@ -42,10 +42,13 @@ function _handle_camera_input!(view::FieldView, hovered::Bool, w, h)
     io = CImGui.GetIO()
     d = unsafe_load(io.MouseDelta)
     drag = _drag(view); cam = view.camera; params = view.params
-    hovered && CImGui.IsMouseClicked(0) && (drag.rotating = true)
+    # Left-drag orbits, or pans with Shift held as the drag starts; right- and middle-drag pan.
+    if hovered && CImGui.IsMouseClicked(0)
+        unsafe_load(io.KeyShift) ? (drag.panning = true) : (drag.rotating = true)
+    end
     hovered && (CImGui.IsMouseClicked(1) || CImGui.IsMouseClicked(2)) && (drag.panning = true)
     CImGui.IsMouseDown(0) || (drag.rotating = false)
-    (CImGui.IsMouseDown(1) || CImGui.IsMouseDown(2)) || (drag.panning = false)
+    (CImGui.IsMouseDown(0) || CImGui.IsMouseDown(1) || CImGui.IsMouseDown(2)) || (drag.panning = false)
 
     # Right-click WITHOUT drag toggles the controls window; right-DRAG still pans (above).
     hovered && CImGui.IsMouseClicked(1) && (drag.rmb_on_widget = true; drag.rmb_dragged = false)
