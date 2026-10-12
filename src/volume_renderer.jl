@@ -43,7 +43,12 @@ end
     flymode::Bool = false
     fly_speed::Float64 = 0.25
     background::NTuple{3,Float32} = (0f0, 0f0, 0f0)   # RGB behind the volume and the overlays
+    framing::Any = nothing      # region the camera is framed on; `nothing` frames the clipping region
 end
+
+# The region the camera is framed on: `params.framing` when set, so the view can clip to part of the
+# field (a slab) while staying framed on all of it.
+framing_region(view) = something(view.params.framing, view.region)
 
 # ── shared per-program uniform groups ──
 function set_camera_uniforms!(prog, cam::Camera, aspect)
@@ -137,6 +142,7 @@ render_key(view::FieldView, gw, gh, vw, vh) = hash((
     view.camera.fov, view.camera.ortho_half,
     view.params.mode, view.params.interp, view.params.step_scale, view.params.opacity_scale,
     view.params.refine_samples, view.params.background,
+    view.params.framing === nothing ? nothing : fingerprint(view.params.framing),
     fingerprint(view.field), fingerprint(view.region),
     view.tf.colormap, view.tf.logscale, view.tf.lo, view.tf.hi, view.tf.opacity_pts,
     Tuple(overlay_fingerprint(o) for o in view.overlays),
@@ -175,7 +181,7 @@ function render_frame!(view::FieldView, gw, gh, vw, vh)
     resize!(vr.geom_fb, gw, gh); resize!(vr.vol_fb, vw, vh)
     refining && resize!(vr.accum_fb, gw, gh)
     aspect = gw / gh
-    center, radius = bounds(view.region)
+    center, radius = bounds(framing_region(view))
     vpm = view_proj(view.camera, center, radius, aspect)
     vp  = vec(Matrix{Float32}(vpm))
     ivp = vec(Matrix{Float32}(inv(vpm)))

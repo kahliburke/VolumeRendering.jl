@@ -136,7 +136,7 @@ function ShowControls(view::FieldView)
         sel !== nothing && (cam.projection = sel == 0 ? :perspective : :ortho)
     end
     if CImGui.Button("reset view")
-        c, r = bounds(view.region)
+        c, r = bounds(framing_region(view))
         reset!(cam, Camera(; center = c, radius = r))
     end
     CImGui.SameLine()
@@ -146,7 +146,7 @@ function ShowControls(view::FieldView)
     CImGui.SetItemTooltip("W/S forward·back   A/D strafe   Space/C up·down   Shift sprint   drag to look")
     if params.flymode
         CImGui.SameLine(); CImGui.SetNextItemWidth(hw)
-        _, r = bounds(view.region)
+        _, r = bounds(framing_region(view))
         let v = Ref(Cfloat(params.fly_speed))
             (@c CImGui.SliderFloat("##flyspeed", &v[], Cfloat(r / 2000), Cfloat(r / 20),
                                    "fly speed: %.4f", CImGui.ImGuiSliderFlags_Logarithmic)) &&
