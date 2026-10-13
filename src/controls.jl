@@ -140,6 +140,8 @@ function ShowControls(view::FieldView)
         sel !== nothing && (cam.projection = sel == 0 ? :perspective : :ortho)
     end
     if CImGui.Button("reset view")
+        # Back to the whole field, clipping included, framed as it first was.
+        view.region = region(view.field)
         c, r = bounds(framing_region(view))
         reset!(cam, Camera(; center = c, radius = r))
     end
