@@ -52,9 +52,13 @@ end
 
 # A row of ImPlot ColormapButtons; a click sets the TF colormap, and the selected one is outlined.
 function _colormap_buttons!(tf::TransferFunction)
+    bw = 80.0
+    sp = unsafe_load(CImGui.GetStyle().ItemSpacing).x
+    right = CImGui.GetCursorScreenPos().x + CImGui.GetContentRegionAvail().x
     for (i, sym) in enumerate(TF_COLORMAPS)
-        i > 1 && CImGui.SameLine()
-        if ImPlot.ColormapButton(String(sym), ImVec2(80, 0), _cmap_index(sym))
+        # Side by side while the next one fits, on the next row when it does not.
+        i > 1 && CImGui.GetItemRectMax().x + sp + bw <= right && CImGui.SameLine()
+        if ImPlot.ColormapButton(String(sym), ImVec2(bw, 0), _cmap_index(sym))
             tf.colormap = sym
             tf.dirty = true
         end
